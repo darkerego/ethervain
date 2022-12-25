@@ -175,7 +175,7 @@ if __name__ == '__main__':
     args.add_argument('-s', '--suffix', nargs='+', action='append', type=str)
     args.add_argument('-c', '--charset', type=str,
                       help='Search for string with only these hex characters.')
-    args.add_argument('-b', '--bits', type=int, default=32, help='Entropy keybits used for '
+    args.add_argument('-b', '--bits', type=int, default=256, help='Entropy keybits used for '
                                                                  'key generation.')
     args.add_argument('-v', '--verbosity', action='count', default=0)
     args.add_argument('-i', '--info', action='store_true',
