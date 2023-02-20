@@ -27,7 +27,10 @@ except ImportError:
     pass
 else:
     endpoint = os.environ.get('infura_endpoint')
-   
+    # cs_wss = os.environ.get('chainstack_wss')
+    #cs_user = os.environ.get('chainstack_user')
+    # cs_pass = os.environ.get('chainstack_pass')
+    # cs_ws_endpoint = f'wss://{cs_user}:{cs_pass}@{cs_wss}'
 
 
 CGREEN = '\33[32m'
@@ -138,9 +141,12 @@ class YourSoVain:
         while running:
             if type == 'account':
                 priv, addr = self.generator()
-            else:
+            elif type == 'contract':
                 priv, deployer_addr = self.generator()
                 addr = self.contract_address_generator(deployer_addr, 0)
+            else:
+                # This should never happen
+                self._print.error('Unknown search type requested.')
             # print(pub)
             if prefixes is not None:
                 #addr = '0x' + addr
@@ -188,7 +194,7 @@ class YourSoVain:
 
 def main(n=0):
     try:
-        cli.brute(prefixes, suffixes, chars=chars, thread=n)
+        cli.brute(prefixes, suffixes, chars=chars, thread=n, _type=search_type)
     except KeyboardInterrupt:
         print('[+] Caught Signal, exit with grace ... ')
         exit(0)
@@ -215,7 +221,7 @@ if __name__ == '__main__':
         chars = args.charset
     else:
         chars = string.hexdigits
-
+    search_type = args.type
     if args.prefix:
         [prefixes.append(x[0]) for x in args.prefix]
     else:
