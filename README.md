@@ -5,7 +5,8 @@
 
 <p>
 This is a vanity address generator for Ethereum (and other chains that use 
-the web3 standard). It can generate vanity wallet and contract addresses.
+the web3 standard). It can generate vanity wallet and contract addresses. It can also 
+generate vanity addresses from seed phrases.
 </p>
 
 
