@@ -2,7 +2,10 @@
 import random
 import string
 
+import rlp
 from coincurve import PublicKey
+from eth_account import Account
+from eth_utils import to_checksum_address, keccak, to_bytes
 
 try:
     from sha3 import keccak_256
@@ -11,7 +14,7 @@ except ImportError:
 import argparse
 import web3
 import multiprocessing
-
+# import memonic
 import os
 import re
 
@@ -24,10 +27,7 @@ except ImportError:
     pass
 else:
     endpoint = os.environ.get('infura_endpoint')
-    # cs_wss = os.environ.get('chainstack_wss')
-    #cs_user = os.environ.get('chainstack_user')
-    # cs_pass = os.environ.get('chainstack_pass')
-    # cs_ws_endpoint = f'wss://{cs_user}:{cs_pass}@{cs_wss}'
+   
 
 
 CGREEN = '\33[32m'
@@ -82,6 +82,13 @@ class YourSoVain:
         self.bits = bits
         self._print = Style()
 
+    def contract_address_generator(self, sender: str, nonce: int):
+        sender_bytes = to_bytes(hexstr=sender)
+        raw = rlp.encode([sender_bytes, nonce])
+        h = keccak(raw)
+        address_bytes = h[12:]
+        return to_checksum_address(address_bytes)
+
     def generator(self):
         private_key = keccak_256(random.randbytes(self.bits)).digest()
         public_key = PublicKey.from_valid_secret(private_key).format(compressed=False)[1:]
@@ -93,65 +100,83 @@ class YourSoVain:
         with open(self.logfile, 'a') as f:
             f.write(txt + '\n')
 
-    def action_after(self, priv, pub):
-        self._print.info(f'{priv}:{pub}')
+    def action_after(self, priv, addr, contract_addr=None):
+        self._print.info(f'{priv}:{addr}')
+        if contract_addr:
+            self._print.info(f'Contract Address: {contract_addr}')
         # self.log(f'{pub}:{priv}')
         if args.info:
             self._print.notice('Looking up txcount ..')
-            txc = self.w3.eth.getTransactionCount(self.w3.toChecksumAddress(pub))
-            balance = self.w3.eth.getBalance(self.w3.toChecksumAddress(pub))
+            txc = self.w3.eth.getTransactionCount(self.w3.toChecksumAddress(addr))
+            balance = self.w3.eth.getBalance(self.w3.toChecksumAddress(addr))
             if txc > 0 or balance > 0:
                 self._print.error('[!] ACTIVE WALLET FOUND!!! ')
 
-                self._print.info(f'Key Found: {pub}:{priv} Balance; {balance}, TXC: {txc}')
+                self._print.info(f'Key Found: {addr}:{priv} Balance; {balance}, TXC: {txc}')
 
-    def brute(self, prefixes: list = [], suffixes: list = [], chars=None, thread=0):
+    def char_filter(self, s, chars: str):
+        chars = [x for x in chars]
+        # print(chars)
+        chars.append('x')
+
+        for x, y in enumerate(s):
+            if x > 1:
+                if chars.__contains__(y.upper()):
+                    continue
+                else:
+                    return False
+        return True
+
+
+
+    def brute(self, prefixes: list = [], suffixes: list = [], chars=None, thread=0, _type='account'):
         print(f'[~] VanityGen Thread {thread}, Options: ', prefixes, suffixes, chars)
-        def char_filter(s, chars: str):
-            chars = [x for x in chars]
-            # print(chars)
-            chars.append('x')
 
-            for x, y in enumerate(s):
-                if x >1:
-                    if chars.__contains__(y.upper()):
-                        continue
-                    else:
-                        return False
-            return True
 
         c = 0
         running = True
         while running:
-            priv, pub = self.generator()
+            if type == 'account':
+                priv, addr = self.generator()
+            else:
+                priv, deployer_addr = self.generator()
+                addr = self.contract_address_generator(deployer_addr, 0)
             # print(pub)
             if prefixes is not None:
-                pub = '0x' + pub
+                #addr = '0x' + addr
                 for prefix in prefixes:
                     # print(prefix)
-                    if re.match(r'^'+prefix, pub):
+                    # print(priv, addr)
+                    if re.match(r'^'+prefix, addr):
+
                         if chars is not None:
-                            if char_filter(pub, chars):
-                                # print(priv, pub)
-                                self.action_after(priv, pub)
+                            if self.char_filter(addr, chars):
+
+                                if _type == 'account':
+                                    self.action_after(priv, addr)
+                                else:
+                                    self.action_after(priv, deployer_addr, addr)
 
                         else:
                             # print(priv, pub)
-                            self.action_after(priv, pub)
+                            if _type == 'account':
+                                self.action_after(priv, addr)
+                            else:
+                                self.action_after(priv, deployer_addr, addr)
 
 
                 if suffixes:
                     for suffix in suffixes:
-                        if re.match(r'^' + suffix, pub):
+                        if re.match(r'^' + suffix, addr):
                             # print(priv, pub)
                             if chars is not None:
-                                if char_filter(pub, chars):
+                                if self.char_filter(addr, chars):
                                     # print(priv, pub)
-                                    self.action_after(priv, '0x' + pub)
+                                    self.action_after(priv, '0x' + addr)
 
                             else:
                                 # print(priv, pub)
-                                self.action_after(priv, '0x' + pub)
+                                self.action_after(priv, '0x' + addr)
 
 
                     else:
@@ -175,11 +200,12 @@ if __name__ == '__main__':
     args.add_argument('-s', '--suffix', nargs='+', action='append', type=str)
     args.add_argument('-c', '--charset', type=str,
                       help='Search for string with only these hex characters.')
-    args.add_argument('-b', '--bits', type=int, default=256, help='Entropy keybits used for '
+    args.add_argument('-b', '--bits', type=int, default=32, help='Entropy keybits used for '
                                                                  'key generation.')
     args.add_argument('-v', '--verbosity', action='count', default=0)
     args.add_argument('-i', '--info', action='store_true',
                       help='Query the blockchain for balance/info on discovered keys.')
+    args.add_argument('-T', '--type', default='account', choices=['account', 'contract'])
     args.add_argument('-t', '--threads', type=int, default=0)
 
     args = args.parse_args()
