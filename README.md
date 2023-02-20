@@ -13,7 +13,7 @@ generate vanity addresses from seed phrases.
 #### Usage
 
 <pre>
-usage: vanity.py [-h] [-p PREFIX [PREFIX ...]] [-s SUFFIX [SUFFIX ...]] [-c CHARSET] [-b BITS] [-v] [-i] [-T {account,contract}] [-t THREADS]
+usage: vanity.py [-h] [-p PREFIX [PREFIX ...]] [-s SUFFIX [SUFFIX ...]] [-c CHARSET] [-b BITS] [-v] [-i] [-T {account,contract}] [-t THREADS] [-S]
 
 options:
   -h, --help            show this help message and exit
@@ -24,9 +24,10 @@ options:
   -b BITS, --bits BITS  Entropy keybits used for key generation.
   -v, --verbosity
   -i, --info            Query the blockchain for balance/info on discovered keys.
-  -T {account,contract}, --type {account,contract}
+  -T {account,contract}, --search_type {account,contract}
   -t THREADS, --threads THREADS
-
+  -S, --seed            Generate vanity address from seed phrase instead of keys.
+                                                                                  
 
 </pre>
 
