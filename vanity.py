@@ -6,7 +6,7 @@ import rlp
 from coincurve import PublicKey
 from eth_account import Account
 from eth_utils import to_checksum_address, keccak, to_bytes
-
+from lib import mnem_utils
 try:
     from sha3 import keccak_256
 except ImportError:
@@ -14,7 +14,7 @@ except ImportError:
 import argparse
 import web3
 import multiprocessing
-# import memonic
+import mnemonic
 import os
 import re
 
@@ -32,6 +32,7 @@ else:
     # cs_pass = os.environ.get('chainstack_pass')
     # cs_ws_endpoint = f'wss://{cs_user}:{cs_pass}@{cs_wss}'
 
+METAMASK_DERIVATION_PATH = "m/44'/60'/0'/0"
 
 CGREEN = '\33[32m'
 CEND = '\33[0m'
@@ -74,7 +75,7 @@ class Style:
 
 class YourSoVain:
     def __init__(self, endpoint: str = None, logfile: str = 'default.log', verb: int = 0,
-                 bits: int = 32):
+                 bits: int = 32, search_type: str = 'account', from_seed: bool = False):
         if endpoint:
             self.w3 = web3.Web3(web3.Web3.HTTPProvider(endpoint))
         else:
@@ -83,7 +84,17 @@ class YourSoVain:
         self.verb = verb
         # self.chars = chars
         self.bits = bits
+        self.search_type = search_type
+        self.from_seed = from_seed
         self._print = Style()
+        self.mnemonic = mnemonic.Mnemonic('english')
+        self.seed_to_key = getattr(mnem_utils, 'get_account')
+
+    def seed_generator(self):
+        return self.mnemonic.to_mnemonic(random.randbytes(self.bits))
+
+
+
 
     def contract_address_generator(self, sender: str, nonce: int):
         sender_bytes = to_bytes(hexstr=sender)
@@ -103,10 +114,12 @@ class YourSoVain:
         with open(self.logfile, 'a') as f:
             f.write(txt + '\n')
 
-    def action_after(self, priv, addr, contract_addr=None):
+    def action_after(self, priv, addr, contract_addr=None, seed=None):
         self._print.info(f'{priv}:{addr}')
         if contract_addr:
             self._print.info(f'Contract Address: {contract_addr}')
+        if seed:
+            self._print.info(f'Seed: {seed}')
         # self.log(f'{pub}:{priv}')
         if args.info:
             self._print.notice('Looking up txcount ..')
@@ -132,16 +145,20 @@ class YourSoVain:
 
 
 
-    def brute(self, prefixes: list = [], suffixes: list = [], chars=None, thread=0, _type='account'):
+    def brute(self, prefixes: list = [], suffixes: list = [], chars=None, thread=0):
         print(f'[~] VanityGen Thread {thread}, Options: ', prefixes, suffixes, chars)
 
 
         c = 0
         running = True
         while running:
-            if type == 'account':
-                priv, addr = self.generator()
-            elif type == 'contract':
+            if self.search_type == 'account':
+                if not args.seed:
+                    priv, addr = self.generator()
+                else:
+                    seed = self.seed_generator()
+                    priv, addr = self.seed_to_key(seed)
+            elif self.search_type == 'contract':
                 priv, deployer_addr = self.generator()
                 addr = self.contract_address_generator(deployer_addr, 0)
             else:
@@ -158,15 +175,15 @@ class YourSoVain:
                         if chars is not None:
                             if self.char_filter(addr, chars):
 
-                                if _type == 'account':
-                                    self.action_after(priv, addr)
+                                if self.search_type == 'account':
+                                    self.action_after(priv, addr, seed=seed)
                                 else:
-                                    self.action_after(priv, deployer_addr, addr)
+                                    self.action_after(priv, deployer_addr, contract_addr=addr)
 
                         else:
                             # print(priv, pub)
-                            if _type == 'account':
-                                self.action_after(priv, addr)
+                            if self.search_type == 'account':
+                                self.action_after(priv, addr, seed=seed)
                             else:
                                 self.action_after(priv, deployer_addr, addr)
 
@@ -194,7 +211,7 @@ class YourSoVain:
 
 def main(n=0):
     try:
-        cli.brute(prefixes, suffixes, chars=chars, thread=n, _type=search_type)
+        cli.brute(prefixes, suffixes, chars=chars, thread=n)
     except KeyboardInterrupt:
         print('[+] Caught Signal, exit with grace ... ')
         exit(0)
@@ -211,8 +228,10 @@ if __name__ == '__main__':
     args.add_argument('-v', '--verbosity', action='count', default=0)
     args.add_argument('-i', '--info', action='store_true',
                       help='Query the blockchain for balance/info on discovered keys.')
-    args.add_argument('-T', '--type', default='account', choices=['account', 'contract'])
+    args.add_argument('-T', '--search_type', default='account', choices=['account', 'contract'])
     args.add_argument('-t', '--threads', type=int, default=0)
+    args.add_argument('-S', '--seed', action='store_true',
+                      help='Generate vanity address from seed phrase instead of keys.')
 
     args = args.parse_args()
     prefixes = []
@@ -221,7 +240,8 @@ if __name__ == '__main__':
         chars = args.charset
     else:
         chars = string.hexdigits
-    search_type = args.type
+    search_type = args.search_type
+    print('[~] Search type:', search_type)
     if args.prefix:
         [prefixes.append(x[0]) for x in args.prefix]
     else:
@@ -231,7 +251,7 @@ if __name__ == '__main__':
     else:
         suffixes = []
     chars = args.charset
-    cli = YourSoVain(endpoint)
+    cli = YourSoVain(endpoint, bits=args.bits, search_type=search_type, from_seed=args.seed)
     if args.threads == 0:
         threads = os.cpu_count()
     else:
